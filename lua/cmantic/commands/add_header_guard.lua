@@ -1,4 +1,4 @@
---- Add Header Guard command for cmantic.nvim
+--- Add/Amend Header Guard command for cmantic.nvim
 --- Ported from vscode-cmantic src/commands/addHeaderGuard.ts
 
 local SourceDocument = require('cmantic.source_document')
@@ -30,10 +30,53 @@ function M._format_guard_name(doc)
   return format
 end
 
+--- Extract existing guard name from header guard directives
+--- @param doc table SourceDocument
+--- @return string|nil Existing guard name or nil
+function M._get_existing_guard_name(doc)
+  local directives = doc:get_header_guard_directives()
+  for _, directive in ipairs(directives) do
+    local text = directive:text()
+    local name = text:match('^%s*#%s*ifndef%s+([%w_]+)')
+    if name then
+      return name
+    end
+  end
+  return nil
+end
+
+--- Execute Amend Header Guard command
+--- Replaces existing guard name with the correct one based on current filename
+--- @param doc table SourceDocument
+--- @param new_guard string New guard name
+function M._amend_guard(doc, new_guard)
+  local old_guard = M._get_existing_guard_name(doc)
+  if not old_guard then
+    utils.notify('Could not find existing guard name to amend', 'warn')
+    return
+  end
+
+  if old_guard == new_guard then
+    utils.notify('Header guard is already correct', 'info')
+    return
+  end
+
+  local directives = doc:get_header_guard_directives()
+  for _, directive in ipairs(directives) do
+    local text = directive:text()
+    local new_text = text:gsub(old_guard, new_guard, 1)
+    if new_text ~= text then
+      doc:replace_text(directive.range, new_text)
+    end
+  end
+
+  utils.notify('Header guard amended: ' .. old_guard .. ' → ' .. new_guard, 'info')
+end
+
 --- Execute Add Header Guard command
 --- Algorithm:
 --- 1. Ensure current buffer is a header file
---- 2. Skip if guard already exists (#ifndef/#define or #pragma once)
+--- 2. If guard already exists → amend (update guard name to match current filename)
 --- 3. Build guard content based on config.header_guard_style
 --- 4. Insert at top after header comments
 --- 5. For define/both styles, append matching #endif at file end
@@ -46,13 +89,20 @@ function M.execute()
     return
   end
 
-  if doc:has_header_guard() or doc:has_pragma_once() then
-    utils.notify('Header guard already exists', 'info')
+  local guard_name = M._format_guard_name(doc)
+
+  -- If guard already exists, amend it
+  if doc:has_header_guard() then
+    M._amend_guard(doc, guard_name)
+    return
+  end
+
+  if doc:has_pragma_once() then
+    utils.notify('Header uses #pragma once (nothing to amend)', 'info')
     return
   end
 
   local style = config.values.header_guard_style or 'define'
-  local guard_name = M._format_guard_name(doc)
   local insert_pos = doc:position_after_header_comment()
   local insert_line = insert_pos and insert_pos:line() or 0
 

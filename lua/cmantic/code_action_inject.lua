@@ -35,7 +35,11 @@ local function get_cmantic_actions(bufnr)
   local ok, actions = pcall(code_action.get_applicable_actions, bufnr, {
     range = { start = position, ['end'] = position },
   })
-  if not ok then return {} end
+  if not ok then
+    local notify = require('cmantic.utils').notify
+    notify('Cmantic action evaluation failed: ' .. tostring(actions), vim.log.levels.ERROR)
+    return {}
+  end
   return actions or {}
 end
 
