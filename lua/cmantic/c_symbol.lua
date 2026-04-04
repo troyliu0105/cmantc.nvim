@@ -23,8 +23,14 @@ local AccessLevel = utils.AccessLevel
 --- @param document table SourceDocument with get_text(range) and offset_at(position) methods
 --- @return table CSymbol instance
 function M.new(symbol, document)
-  -- Initialize as SourceSymbol first
-  local self = SourceSymbol.new(symbol, document.uri, symbol.parent)
+  local self
+  -- SourceSymbol uses selection_range; raw LSP uses selectionRange.
+  -- Re-calling SourceSymbol.new on an already-normalized symbol nils out selection_range.
+  if getmetatable(symbol) == SourceSymbol then
+    self = symbol
+  else
+    self = SourceSymbol.new(symbol, document.uri, symbol.parent)
+  end
   -- Override metatable to CSymbol
   setmetatable(self, M)
 

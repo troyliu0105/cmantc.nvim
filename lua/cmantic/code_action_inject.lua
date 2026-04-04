@@ -164,16 +164,17 @@ function M.enable()
     -- Fallback: if vim.ui.select was never called (LSP returned empty),
     -- show cmantic-only actions.
     --
-    -- vim.schedule fires on the next event-loop tick, AFTER pending I/O
-    -- callbacks (including the LSP response). For local clangd the
-    -- response arrives in the same tick, so this ordering is reliable.
-    vim.schedule(function()
+    -- Must use vim.defer_fn (not vim.schedule) because the LSP response
+    -- arrives asynchronously via the event loop. vim.schedule fires on the
+    -- next tick before the async callback, causing a double-picker flash
+    -- when LSP does return actions.
+    vim.defer_fn(function()
       if not _select_was_called and _pending_cmantic then
         local actions = _pending_cmantic
         _pending_cmantic = nil
         show_cmantic_only(actions)
       end
-    end)
+    end, 200)
   end
 end
 
