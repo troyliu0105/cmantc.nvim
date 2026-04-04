@@ -22,7 +22,13 @@ local function complete(arg_lead, cmdline, cursor_pos)
 end
 
 local function run(opts)
-  vim.notify('Cmantic: commands not yet implemented', vim.log.levels.INFO)
+  local cmd_module = require('cmantic.commands')
+  local args = opts.args and opts.args:match('^%S+') or ''
+  if args == '' then
+    require('cmantic').show_actions()
+  else
+    cmd_module.execute(args)
+  end
 end
 
 vim.api.nvim_create_user_command('Cmantic', run, {

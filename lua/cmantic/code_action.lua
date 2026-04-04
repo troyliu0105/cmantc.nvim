@@ -332,74 +332,63 @@ end
 --------------------------------------------------------------------------------
 
 function M._add_definition_in_source(csymbol, doc, source_uri)
-  utils.notify('Add Definition in source file: ' .. csymbol.name, 'info')
-  -- TODO: Implement in definition.lua module
-  -- 1. Open source file
-  -- 2. Find smart position for definition
-  -- 3. Generate definition text
-  -- 4. Insert definition
+  local add_def = require('cmantic.commands.add_definition')
+  add_def.execute_in_source()
 end
 
 function M._add_definition_inline(csymbol, doc, bufnr)
-  utils.notify('Add Definition in this file: ' .. csymbol.name, 'info')
-  -- TODO: Implement in definition.lua module
-  -- 1. Find position after class or in namespace
-  -- 2. Generate definition with inline keyword
-  -- 3. Insert definition
+  local add_def = require('cmantic.commands.add_definition')
+  add_def.execute_in_current()
 end
 
 function M._add_declaration_in_header(csymbol, doc, header_uri)
-  utils.notify('Add Declaration: ' .. csymbol.name, 'info')
-  -- TODO: Implement in declaration.lua module
-  -- 1. Open header file
-  -- 2. Find class and access section
-  -- 3. Generate declaration text
-  -- 4. Insert declaration
+  local add_decl = require('cmantic.commands.add_declaration')
+  add_decl.execute()
 end
 
 function M._add_declaration_in_class(csymbol, doc, bufnr)
-  utils.notify('Add Declaration in class: ' .. csymbol.name, 'info')
-  -- TODO: Implement in declaration.lua module
+  local add_decl = require('cmantic.commands.add_declaration')
+  add_decl.execute()
 end
 
 function M._generate_getter(csymbol, doc, bufnr)
-  utils.notify('Generate Getter for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in accessor.lua module
+  local gen = require('cmantic.commands.generate_getter_setter')
+  gen.execute({ mode = 'getter' })
 end
 
 function M._generate_setter(csymbol, doc, bufnr)
-  utils.notify('Generate Setter for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in accessor.lua module
+  local gen = require('cmantic.commands.generate_getter_setter')
+  gen.execute({ mode = 'setter' })
 end
 
 function M._generate_getter_and_setter(csymbol, doc, bufnr)
-  utils.notify('Generate Getter and Setter for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in accessor.lua module
+  local gen = require('cmantic.commands.generate_getter_setter')
+  gen.execute({ mode = 'both' })
 end
 
 function M._generate_equality_operators(csymbol, doc, bufnr)
-  utils.notify('Generate Equality Operators for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in operator.lua module
+  local gen = require('cmantic.commands.generate_operators')
+  gen.execute({ mode = 'equality' })
 end
 
 function M._generate_relational_operators(csymbol, doc, bufnr)
-  utils.notify('Generate Relational Operators for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in operator.lua module
+  local gen = require('cmantic.commands.generate_operators')
+  gen.execute({ mode = 'relational' })
 end
 
 function M._generate_stream_operator(csymbol, doc, bufnr)
-  utils.notify('Generate Stream Output Operator for: ' .. csymbol.name, 'info')
-  -- TODO: Implement in operator.lua module
+  local gen = require('cmantic.commands.generate_operators')
+  gen.execute({ mode = 'stream' })
 end
 
 function M._add_header_guard(doc, bufnr)
-  utils.notify('Add Header Guard', 'info')
-  -- TODO: Implement in header_guard.lua module
+  local cmd = require('cmantic.commands.add_header_guard')
+  cmd.execute()
 end
 
 function M._create_matching_source(doc, bufnr)
-  utils.notify('Create Matching Source File', 'info')
-  -- TODO: Implement in source_file.lua module
+  local cmd = require('cmantic.commands.create_source_file')
+  cmd.execute()
 end
 
 --------------------------------------------------------------------------------
