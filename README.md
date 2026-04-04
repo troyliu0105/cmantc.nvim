@@ -21,7 +21,7 @@ cmantic.nvim is a port of [vscode-cmantic](https://github.com/BigBahss/vscode-cm
 
 ## Requirements
 
-- Neovim 0.10+
+- Neovim 0.12+
 - [clangd](https://clangd.llvm.org/) (must be configured as your LSP server for C/C++ files)
 
 ## Installation

@@ -34,18 +34,22 @@ local function get_cmantic_actions(bufnr)
   return actions or {}
 end
 
---- Convert internal cmantic actions to Neovim's { client_id, action } tuple format.
+--- Convert internal cmantic actions to Neovim 0.12's { action, ctx } format.
 --- @param actions table[] cmantic action list
---- @return table[] action tuples with _cmantic_id sentinel
-local function to_lsp_items(actions)
+--- @param bufnr number
+--- @return table[] items matching Neovim's code action item format
+local function to_lsp_items(actions, bufnr)
   local items = {}
   for _, act in ipairs(actions) do
     if not act.disabled then
       table.insert(items, {
-        -1,
-        {
+        action = {
           title = act.title,
           kind = act.kind,
+        },
+        ctx = {
+          client_id = -1,
+          bufnr = bufnr,
         },
         _cmantic_id = act.id,
       })
@@ -54,74 +58,43 @@ local function to_lsp_items(actions)
   return items
 end
 
---- Apply an LSP code action (replicates Neovim's internal apply_action logic).
---- @param action table LSP CodeAction
---- @param client table LSP client
---- @param ctx table LSP request context
-local function apply_lsp_action(action, client, ctx)
-  if action.edit then
-    vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
+--- Format an action item for display in the picker.
+--- Neovim 0.12 format: { action = { title, ... }, ctx = { client_id, ... } }
+--- @param item table Action item
+--- @return string Display text
+local function format_action(item)
+  if item._cmantic_id then
+    return item.action.title
   end
-  if action.command then
-    local command = type(action.command) == 'table' and action.command or action
-    local fn = client.commands[command.command] or vim.lsp.commands[command.command]
-    if fn then
-      local enriched_ctx = vim.deepcopy(ctx)
-      enriched_ctx.client_id = client.id
-      fn(command, enriched_ctx)
-    else
-      local params = {
-        command = command.command,
-        arguments = command.arguments,
-        workDoneToken = command.workDoneToken,
-      }
-      client.request('workspace/executeCommand', params, nil, ctx.bufnr)
-    end
-  end
+  local title = item.action.title:gsub('\r\n', '\\r\\n')
+  return title:gsub('\n', '\\n')
 end
 
 --- Handle user selection from the merged action list.
---- @param choice table|nil Selected action tuple or nil
---- @param ctx table LSP request context
-local function on_user_choice(choice, ctx)
+--- @param choice table|nil Selected action item or nil
+local function on_user_choice(choice)
   if not choice then return end
 
-  -- Cmantic action
   if choice._cmantic_id then
     require('cmantic.code_action').execute_by_id(choice._cmantic_id)
     return
   end
 
-  -- LSP action
-  local client_id = choice[1]
-  local action = choice[2]
+  -- LSP action — delegate to Neovim's own handler via original_code_action
+  -- with a single pre-resolved result.
+  local client_id = choice.ctx and choice.ctx.client_id
   local client = vim.lsp.get_client_by_id(client_id)
+  if not client then return end
 
-  if not action.edit
-    and client
-    and type(client.resolved_capabilities.code_action) == 'table'
-    and client.resolved_capabilities.code_action.resolveProvider then
-    client.request('codeAction/resolve', action, function(err, resolved_action)
-      if err then
-        vim.notify(err.code .. ': ' .. err.message, vim.log.levels.ERROR)
-        return
-      end
-      apply_lsp_action(resolved_action, client, ctx)
-    end)
-  else
-    apply_lsp_action(action, client, ctx)
+  local action = choice.action
+  if action.edit then
+    vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
   end
-end
-
---- Format an action tuple for display in the picker.
---- @param item table Action tuple
---- @return string Display text
-local function format_action(item)
-  if item._cmantic_id then
-    return item[2].title
+  local a_cmd = action.command
+  if a_cmd then
+    local command = type(a_cmd) == 'table' and a_cmd or action
+    client:exec_cmd(command, choice.ctx)
   end
-  local title = item[2].title:gsub('\r\n', '\\r\\n')
-  return title:gsub('\n', '\\n')
 end
 
 --------------------------------------------------------------------------------
@@ -133,54 +106,66 @@ function M.enable()
   active = true
   original_code_action = vim.lsp.buf.code_action
 
-  vim.lsp.buf.code_action = function(context)
+  vim.lsp.buf.code_action = function(opts)
     local bufnr = vim.api.nvim_get_current_buf()
     local ft = vim.bo[bufnr].filetype
 
     if not SUPPORTED_FT[ft] then
-      return original_code_action(context)
+      return original_code_action(opts)
     end
 
     local cmantic_actions = get_cmantic_actions(bufnr)
 
     if #cmantic_actions == 0 then
-      return original_code_action(context)
+      return original_code_action(opts)
     end
 
-    context = context or {}
-    if not context.diagnostics then
-      context.diagnostics = vim.lsp.diagnostic.get_line_diagnostics(bufnr)
-    end
-    local params = vim.lsp.util.make_range_params()
-    params.context = context
+    -- Use Neovim's own code_action to handle LSP request + response.
+    -- We intercept by wrapping vim.ui.select temporarily to merge our actions.
+    local select_original = vim.ui.select
+    vim.ui.select = function(items, select_opts, on_choice)
+      vim.ui.select = select_original
 
-    local method = 'textDocument/codeAction'
-    local ctx = { bufnr = bufnr, method = method, params = params }
-
-    vim.lsp.buf_request_all(bufnr, method, params, function(results)
-      local lsp_tuples = {}
-      for client_id, result in pairs(results or {}) do
-        for _, action in pairs(result.result or {}) do
-          table.insert(lsp_tuples, { client_id, action })
-        end
+      if select_opts.kind ~= 'codeaction' then
+        return select_original(items, select_opts, on_choice)
       end
 
-      local cmantic_tuples = to_lsp_items(cmantic_actions)
+      local cmantic_items = to_lsp_items(cmantic_actions, bufnr)
+      local all_items = vim.list_extend(cmantic_items, items)
 
-      if #lsp_tuples == 0 and #cmantic_tuples == 0 then
+      if #all_items == 0 then
         vim.notify('No code actions available', vim.log.levels.INFO)
         return
       end
 
-      local all_items = vim.list_extend(cmantic_tuples, lsp_tuples)
-
-      vim.ui.select(all_items, {
-        prompt = 'Code actions:',
-        kind = 'codeaction',
-        format_item = format_action,
-      }, function(choice)
-        on_user_choice(choice, ctx)
+      select_original(all_items, select_opts, function(choice)
+        if choice and choice._cmantic_id then
+          require('cmantic.code_action').execute_by_id(choice._cmantic_id)
+        else
+          on_choice(choice)
+        end
       end)
+    end
+
+    original_code_action(opts)
+
+    -- If LSP returned 0 actions, Neovim won't call vim.ui.select,
+    -- so our interception above never fires. Show cmantic-only.
+    -- We detect this by checking if vim.ui.select was restored
+    -- (it gets restored inside the interception).
+    vim.schedule(function()
+      if vim.ui.select ~= select_original then
+        -- Interception didn't fire — LSP had no actions
+        vim.ui.select = select_original
+        local cmantic_items = to_lsp_items(cmantic_actions, bufnr)
+        if #cmantic_items > 0 then
+          select_original(cmantic_items, {
+            prompt = 'Code actions:',
+            kind = 'codeaction',
+            format_item = format_action,
+          }, on_user_choice)
+        end
+      end
     end)
   end
 end
