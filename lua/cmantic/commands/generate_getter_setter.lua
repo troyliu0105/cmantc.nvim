@@ -44,9 +44,9 @@ function M.execute(opts)
     return
   end
 
+  local parent_csym = CSymbol.new(parent, doc)
   local access = utils.AccessLevel.public
-  local pos_info = parent.find_position_for_new_member_function
-    and parent:find_position_for_new_member_function(access, csymbol.name)
+  local pos_info = parent_csym:find_position_for_new_member_function(access, csymbol.name)
 
   if not pos_info or not pos_info.position then
     utils.notify('Could not find position for accessor', vim.log.levels.WARN)

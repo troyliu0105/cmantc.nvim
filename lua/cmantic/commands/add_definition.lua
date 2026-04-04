@@ -6,6 +6,7 @@ local M = {}
 
 local SourceDocument = require('cmantic.source_document')
 local CSymbol = require('cmantic.c_symbol')
+local ProposedPosition = require('cmantic.proposed_position')
 local header_source = require('cmantic.header_source')
 local utils = require('cmantic.utils')
 local config = require('cmantic.config')
@@ -217,7 +218,19 @@ function M.execute_in_current()
   end
 
   -- Find smart position in current file
-  local proposed_pos = doc:find_smart_position_for_function_definition(csymbol, doc)
+  local proposed_pos
+
+  if csymbol.parent and csymbol.parent:is_class_type() then
+    local parent_csym = CSymbol.new(csymbol.parent, doc)
+    local body_end = parent_csym:_find_body_end()
+    proposed_pos = ProposedPosition.new(
+      { line = body_end.line, character = 0 },
+      { blank_lines_before = 1 }
+    )
+  else
+    proposed_pos = doc:find_smart_position_for_function_definition(csymbol, doc)
+  end
+
   local insert_position = proposed_pos.position or proposed_pos
 
   -- Generate definition text (with inline keyword for headers)

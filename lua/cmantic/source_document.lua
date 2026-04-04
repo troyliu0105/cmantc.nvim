@@ -953,12 +953,15 @@ end
 --- @param text string Text to insert
 function M:insert_text(position, text)
   local lines = vim.split(text, '\n')
+  local line_count = vim.api.nvim_buf_line_count(self.bufnr)
+  local row = math.min(position.line, line_count)
+  local col = math.min(position.character, row < line_count and #self:get_line(row) or 0)
   vim.api.nvim_buf_set_text(
     self.bufnr,
-    position.line,
-    position.character,
-    position.line,
-    position.character,
+    row,
+    col,
+    row,
+    col,
     lines
   )
 end
