@@ -67,22 +67,16 @@ end
 --- @param actions table[] cmantic action list
 local function show_cmantic_only(actions)
   local code_action = require('cmantic.code_action')
-  local titles = {}
-  local enabled = {}
-  for _, act in ipairs(actions) do
-    if not act.disabled then
-      table.insert(titles, act.title)
-      table.insert(enabled, act)
-    end
-  end
-  if #titles == 0 then return end
+  local bufnr = vim.api.nvim_get_current_buf()
+  local items = to_lsp_items(actions, bufnr)
+  if #items == 0 then return end
 
-  original_select(titles, {
+  original_select(items, {
     kind = 'codeaction',
     prompt = 'Code Actions:',
-  }, function(choice, idx)
-    if choice and idx and enabled[idx] then
-      code_action.execute_action(enabled[idx])
+  }, function(choice)
+    if choice and choice._cmantic_id then
+      code_action.execute_by_id(choice._cmantic_id)
     end
   end)
 end
