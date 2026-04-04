@@ -74,6 +74,9 @@ local function show_cmantic_only(actions)
   original_select(items, {
     kind = 'codeaction',
     prompt = 'Code Actions:',
+    format_item = function(item)
+      return item.action and item.action.title or tostring(item)
+    end,
   }, function(choice)
     if choice and choice._cmantic_id then
       code_action.execute_by_id(choice._cmantic_id)
