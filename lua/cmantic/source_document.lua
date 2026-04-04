@@ -80,6 +80,12 @@ function M:get_line(line_nr)
   return lines[1] or ''
 end
 
+--- Get all lines from the buffer
+--- @return string[] Array of lines (1-indexed)
+function M:get_lines()
+  return vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
+end
+
 --- Get line count
 --- @return number Number of lines
 function M:line_count()
