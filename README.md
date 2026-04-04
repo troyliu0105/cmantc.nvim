@@ -30,7 +30,7 @@ cmantic.nvim is a port of [vscode-cmantic](https://github.com/BigBahss/vscode-cm
 
 ```lua
 {
-  'BigBahss/cmantic.nvim',
+  'troyliu0105/cmantc.nvim',
   ft = { 'c', 'cpp', 'h', 'hpp' },
   config = function()
     require('cmantic').setup()
