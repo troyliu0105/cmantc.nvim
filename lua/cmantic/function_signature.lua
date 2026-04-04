@@ -104,4 +104,9 @@ function M:equals(other)
     and self.trailing == other.trailing
 end
 
+function M.from_symbol(csymbol, doc)
+  local text = doc:get_text(csymbol.range)
+  return M.new(text)
+end
+
 return M
