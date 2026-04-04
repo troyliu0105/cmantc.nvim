@@ -80,7 +80,7 @@ function M.format_to_case_style(name)
   elseif style == 'snake_case' then
     local result = name
     result = result:gsub('(%u)(%u%l)', '%1_%2')
-    result = result:gsub('(%l%u)', '%1_')
+    result = result:gsub('(%l)(%u)', '%1_%2')
     result = result:lower()
     result = result:gsub('[%s%-]+', '_')
     result = result:gsub('_+', '_')

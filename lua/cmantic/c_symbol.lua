@@ -634,7 +634,11 @@ function M:format_declaration(target_doc, position, scope_string, check_for_inli
   -- 2. Get parameters, strip default values
   local params = self:_extract_parameters(text)
   if params then
-    params = parse.strip_default_values(params)
+    -- Strip outer parentheses for strip_default_values (expects content without parens)
+    local params_content = params:sub(2, -2)
+    params_content = parse.strip_default_values(params_content)
+    -- Re-add parentheses for replacement
+    params = '(' .. params_content .. ')'
     text = self:_replace_parameters(text, params)
   end
 

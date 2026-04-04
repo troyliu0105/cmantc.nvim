@@ -49,8 +49,8 @@ local function strip_scope_resolution(name)
   local last_colon = name:reverse():find('::')
   if last_colon then
     -- Convert reversed position back to forward position
-    local pos = #name - last_colon - 1
-    return name:sub(pos + 1)
+    local pos = #name - last_colon
+    return name:sub(pos + 2)
   end
   return name
 end

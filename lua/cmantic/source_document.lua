@@ -391,7 +391,7 @@ function M:get_header_guard_directives()
     local guard_name = text:match('^%s*#%s*ifndef%s+([%w_]+)')
     if guard_name and i < #directives then
       local next_text = directives[i + 1]:text()
-      local define_pattern = '^%s*#%s*define%s+' .. guard_name .. '%b'
+      local define_pattern = '^%s*#%s*define%s+' .. guard_name .. '%s*$'
       if next_text:match(define_pattern) then
         table.insert(self._header_guard_directives, directives[i])
         table.insert(self._header_guard_directives, directives[i + 1])
