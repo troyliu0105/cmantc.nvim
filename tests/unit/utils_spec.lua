@@ -1,4 +1,5 @@
 local utils = require('cmantic.utils')
+local config = require('cmantic.config')
 local eq = assert.are.same
 
 describe('utils', function()
@@ -133,49 +134,35 @@ describe('utils', function()
   end)
 
   describe('notify', function()
-    local original_config
     local original_notify
+    local original_alert_level
+    local captured
 
     before_each(function()
-      original_config = require('cmantic.config').values.alert_level
       original_notify = vim.notify
+      original_alert_level = config.values.alert_level
+      captured = nil
+      vim.notify = function(msg, level)
+        captured = { msg = msg, level = level }
+      end
+      config.values.alert_level = 'warn'
     end)
 
     after_each(function()
-      require('cmantic.config').values.alert_level = original_config
       vim.notify = original_notify
+      config.values.alert_level = original_alert_level
     end)
 
     it('does not call vim.notify for info when alert_level is warn', function()
-      local called = false
-      local call_msg = nil
-      vim.notify = function(msg, level)
-        called = true
-        call_msg = msg
-      end
-      
-      require('cmantic.config').values.alert_level = 'warn'
       utils.notify('test', 'info')
-      
-      assert.is_false(called)
-      eq(nil, call_msg)
+      assert.is_nil(captured)
     end)
 
     it('calls vim.notify for error when alert_level is warn', function()
-      local called = false
-      local call_msg = nil
-      local call_level = nil
-      vim.notify = function(msg, level)
-        called = true
-        call_msg = msg
-        call_level = level
-      end
-      
-      require('cmantic.config').values.alert_level = 'warn'
       utils.notify('test', 'error')
-      
-      assert.is_true(called)
-      eq('[C-mantic] test', call_msg)
+      assert.is_not_nil(captured)
+      eq('[C-mantic] test', captured.msg)
+      eq(vim.log.levels.ERROR, captured.level)
     end)
   end)
 end)
