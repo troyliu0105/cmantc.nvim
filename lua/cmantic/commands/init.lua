@@ -5,6 +5,9 @@ M.commands = {
   AddDeclaration = 'cmantic.commands.add_declaration',
   AddDefinition = 'cmantic.commands.add_definition',
   MoveDefinition = 'cmantic.commands.move_definition',
+  GenerateOperators = 'cmantic.commands.generate_operators',
+  GenerateGetterSetter = 'cmantic.commands.generate_getter_setter',
+  CreateSourceFile = 'cmantic.commands.create_source_file',
 }
 
 function M.execute(name, opts)
