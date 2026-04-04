@@ -1,7 +1,6 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-04-04
-**Commit:** 4f02ac8
 **Branch:** main
 
 ## OVERVIEW
@@ -23,7 +22,8 @@ cmantic.nvim/
 │   ├── c_symbol.lua            # Core engine: extends SourceSymbol with document-aware text access
 │   ├── source_document.lua     # Buffer wrapper: text access, smart positioning, insertion
 │   ├── header_source.lua       # 3-tier header/source file matching + cache
-│   ├── code_action.lua         # Action detection + vim.ui.select dispatch
+│   ├── code_action_inject.lua  # vim.ui.select interceptor for <leader>ca
+│   ├── code_action.lua         # Action detection + vim.ui.select dispatch + signature tracking
 │   ├── accessor.lua            # Getter/setter text generation
 │   ├── operator.lua            # Comparison/stream operator text generation
 │   ├── function_signature.lua  # Signature parsing (return type, name, params, trailing)
@@ -47,6 +47,7 @@ cmantic.nvim/
 | Add config option | `config.lua` (add default + accessor) | Consume via `config.values.X` |
 | Change header/source matching | `header_source.lua` | `config.lua` (extensions) |
 | Change code action menu | `code_action.lua` (`get_applicable_actions`) | Command modules |
+| Hook into <leader>ca | `code_action_inject.lua` | `code_action.lua` |
 
 ## ARCHITECTURE
 
@@ -60,6 +61,7 @@ DocumentSymbol (LSP raw)
 ### Core Data Flow
 ```
 User action → code_action.lua or :Cmantic
+  → code_action_inject.lua (intercepts vim.ui.select for <leader>ca)
   → SourceDocument (buffer + LSP symbols)
     → CSymbol (at cursor position)
       → parsing.lua (mask text, extract structure)
