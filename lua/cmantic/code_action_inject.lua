@@ -1,7 +1,7 @@
 --- code_action_inject.lua
 --- Replaces vim.lsp.buf.code_action for C/C++ files to merge cmantic actions
---- with LSP code actions into a single picker. No timers or deferred callbacks
---- — the merged picker opens exactly when the LSP response arrives.
+--- with LSP code actions into a single picker.
+--- Uses buf_request_all to avoid timing issues — no deferred callbacks.
 
 local M = {}
 
@@ -34,10 +34,10 @@ local function get_cmantic_actions(bufnr)
   return actions or {}
 end
 
---- Convert internal cmantic actions to Neovim 0.12's { action, ctx } format.
+--- Convert internal cmantic actions to Neovim's { action, ctx } format.
 --- @param actions table[] cmantic action list
 --- @param bufnr number
---- @return table[] items matching Neovim's code action item format
+--- @return table[] items matching Neovim 0.12 code action item format
 local function to_lsp_items(actions, bufnr)
   local items = {}
   for _, act in ipairs(actions) do
@@ -59,7 +59,6 @@ local function to_lsp_items(actions, bufnr)
 end
 
 --- Format an action item for display in the picker.
---- Neovim 0.12 format: { action = { title, ... }, ctx = { client_id, ... } }
 --- @param item table Action item
 --- @return string Display text
 local function format_action(item)
@@ -80,8 +79,6 @@ local function on_user_choice(choice)
     return
   end
 
-  -- LSP action — delegate to Neovim's own handler via original_code_action
-  -- with a single pre-resolved result.
   local client_id = choice.ctx and choice.ctx.client_id
   local client = vim.lsp.get_client_by_id(client_id)
   if not client then return end
@@ -120,52 +117,39 @@ function M.enable()
       return original_code_action(opts)
     end
 
-    -- Use Neovim's own code_action to handle LSP request + response.
-    -- We intercept by wrapping vim.ui.select temporarily to merge our actions.
-    local select_original = vim.ui.select
-    vim.ui.select = function(items, select_opts, on_choice)
-      vim.ui.select = select_original
+    opts = opts or {}
+    if not opts.context then
+      opts.context = {}
+    end
+    if not opts.context.diagnostics then
+      opts.context.diagnostics = vim.lsp.diagnostic.get_line_diagnostics(bufnr)
+    end
 
-      if select_opts.kind ~= 'codeaction' then
-        return select_original(items, select_opts, on_choice)
+    local params = vim.lsp.util.make_range_params()
+    params.context = opts.context
+
+    vim.lsp.buf_request_all(bufnr, 'textDocument/codeAction', params, function(results)
+      local lsp_items = {}
+      for _, result in pairs(results or {}) do
+        for _, action in pairs(result.result or {}) do
+          table.insert(lsp_items, { action = action, ctx = result.context })
+        end
       end
 
       local cmantic_items = to_lsp_items(cmantic_actions, bufnr)
-      local all_items = vim.list_extend(cmantic_items, items)
 
-      if #all_items == 0 then
+      if #lsp_items == 0 and #cmantic_items == 0 then
         vim.notify('No code actions available', vim.log.levels.INFO)
         return
       end
 
-      select_original(all_items, select_opts, function(choice)
-        if choice and choice._cmantic_id then
-          require('cmantic.code_action').execute_by_id(choice._cmantic_id)
-        else
-          on_choice(choice)
-        end
-      end)
-    end
+      local all_items = vim.list_extend(cmantic_items, lsp_items)
 
-    original_code_action(opts)
-
-    -- If LSP returned 0 actions, Neovim won't call vim.ui.select,
-    -- so our interception above never fires. Show cmantic-only.
-    -- We detect this by checking if vim.ui.select was restored
-    -- (it gets restored inside the interception).
-    vim.schedule(function()
-      if vim.ui.select ~= select_original then
-        -- Interception didn't fire — LSP had no actions
-        vim.ui.select = select_original
-        local cmantic_items = to_lsp_items(cmantic_actions, bufnr)
-        if #cmantic_items > 0 then
-          select_original(cmantic_items, {
-            prompt = 'Code actions:',
-            kind = 'codeaction',
-            format_item = format_action,
-          }, on_user_choice)
-        end
-      end
+      vim.ui.select(all_items, {
+        prompt = 'Code actions:',
+        kind = 'codeaction',
+        format_item = format_action,
+      }, on_user_choice)
     end)
   end
 end

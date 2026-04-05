@@ -224,7 +224,7 @@ function M.execute_in_current()
     local parent_csym = CSymbol.new(csymbol.parent, doc)
     local body_end = parent_csym:_find_body_end()
     proposed_pos = ProposedPosition.new(
-      { line = body_end.line, character = 0 },
+      { line = body_end.line + 1, character = 0 },
       { blank_lines_before = 1 }
     )
   else

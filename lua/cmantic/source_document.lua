@@ -218,9 +218,12 @@ function M:get_symbol_at_position(position)
     return nil
   end
 
+  local cursor_line = position and position.line
+
   local function search_deepest(sym_list)
     for _, symbol in ipairs(sym_list) do
-      if self:symbol_contains_position(symbol, position) then
+      local range = symbol.range
+      if range and cursor_line >= range.start.line and cursor_line <= range['end'].line then
         if symbol.children and #symbol.children > 0 then
           local child_match = search_deepest(symbol.children)
           if child_match then
@@ -954,16 +957,19 @@ end
 function M:insert_text(position, text)
   local lines = vim.split(text, '\n')
   local line_count = vim.api.nvim_buf_line_count(self.bufnr)
-  local row = math.min(position.line, line_count)
-  local col = math.min(position.character, row < line_count and #self:get_line(row) or 0)
-  vim.api.nvim_buf_set_text(
-    self.bufnr,
-    row,
-    col,
-    row,
-    col,
-    lines
-  )
+  if position.line >= line_count then
+    vim.api.nvim_buf_set_lines(self.bufnr, line_count, line_count, false, lines)
+  else
+    local col = math.min(position.character, #self:get_line(position.line))
+    vim.api.nvim_buf_set_text(
+      self.bufnr,
+      position.line,
+      col,
+      position.line,
+      col,
+      lines
+    )
+  end
 end
 
 --- Replace text in range
