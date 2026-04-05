@@ -15,6 +15,29 @@ local parse = require('cmantic.parsing')
 -- Helper Functions
 --------------------------------------------------------------------------------
 
+--- Clamp range end character to actual line length (LSP ranges are exclusive)
+--- @param doc table SourceDocument
+--- @param range table Range with start/end positions
+local function clamp_range_end(doc, range)
+  if range['end'] then
+    local lines = doc:get_lines()
+    local num_lines = #lines
+    if range.start.line >= num_lines then
+      range.start.line = num_lines - 1
+      range.start.character = 0
+    end
+    if range['end'].line >= num_lines then
+      range['end'].line = num_lines - 1
+      range['end'].character = #(lines[num_lines] or '')
+    else
+      local max_col = #(lines[range['end'].line + 1] or '')
+      if range['end'].character >= max_col then
+        range['end'].character = max_col
+      end
+    end
+  end
+end
+
 --- Get cursor position as LSP position
 --- @return table { line = number, character = number }
 local function get_cursor_position()
@@ -85,22 +108,29 @@ local function get_range_with_comments(doc, csymbol)
   end
 
   local comment_start_line = true_start.line
+  local in_block_comment = false
 
   -- Look for consecutive comment lines above the function
   for line_idx = true_start.line - 1, 0, -1 do
     local line = lines[line_idx + 1] or ''
     local trimmed = parse.trim(line)
 
-    -- Check if this line is a comment
-    if trimmed:match('^//') or trimmed:match('^/%*') or trimmed:match('%*/$') or trimmed == '' then
-      -- This could be part of a comment block
+    if in_block_comment then
+      comment_start_line = line_idx
+      if trimmed:match('^/%*') then
+        in_block_comment = false
+      end
+    elseif trimmed:match('^//') or trimmed:match('^/%*') then
+      comment_start_line = line_idx
+    elseif trimmed:match('%*/$') then
+      comment_start_line = line_idx
+      in_block_comment = true
+    elseif trimmed == '' then
       if trimmed == '' and comment_start_line == line_idx + 1 then
-        -- Skip empty line immediately above the function
         break
       end
       comment_start_line = line_idx
     else
-      -- Not a comment, stop
       break
     end
   end
@@ -185,53 +215,29 @@ function M.execute_to_source()
   -- Check if a declaration already exists
   local decl_location = csymbol:find_declaration()
   local declaration_exists = decl_location and decl_location.uri == doc.uri
+  local decl_text = nil
 
-  -- If no declaration exists, generate and insert one
   if not declaration_exists then
-    local decl_text = csymbol:new_function_declaration()
+    decl_text = csymbol:new_function_declaration()
     if not decl_text or decl_text == '' then
       utils.notify('Failed to generate declaration', 'error')
       return
     end
+  end
 
-    -- Find position for declaration (where the definition currently is, minus body)
-    local decl_pos = csymbol:true_start()
+  local def_range = config.values.always_move_comments
+      and get_range_with_comments(doc, csymbol)
+    or { start = csymbol:true_start(), ['end'] = csymbol.range['end'] }
 
-    -- Insert declaration at the same position
-    doc:insert_text(decl_pos, decl_text .. '\n')
+  clamp_range_end(doc, def_range)
+  local def_text = doc:get_text(def_range)
 
-    -- Adjust the range for deletion to account for inserted declaration
-    -- We need to delete the definition, not the declaration we just added
-    local added_lines = #vim.split(decl_text, '\n')
-    local new_range = {
-      start = { line = csymbol:true_start().line + added_lines, character = 0 },
-      ['end'] = csymbol.range['end'],
-    }
-
-    -- Get the definition text (including comments if configured)
-    local def_range = config.values.always_move_comments
-        and get_range_with_comments(doc, csymbol)
-      or { start = csymbol:true_start(), ['end'] = csymbol.range['end'] }
-
-    -- Adjust for the inserted declaration
-    if def_range.start.line == csymbol:true_start().line then
-      def_range.start.line = def_range.start.line + added_lines
+  local leading_comments = ''
+  if config.values.always_move_comments then
+    local true_start = csymbol:true_start()
+    if def_range.start.line ~= true_start.line or def_range.start.character ~= true_start.character then
+      leading_comments = doc:get_text({ start = def_range.start, ['end'] = true_start })
     end
-
-    -- Remove the original definition
-    local def_text = doc:get_text(def_range)
-    doc:replace_text(def_range, '')
-  else
-    -- Declaration exists, just remove the definition
-    local def_range = config.values.always_move_comments
-        and get_range_with_comments(doc, csymbol)
-      or { start = csymbol:true_start(), ['end'] = csymbol.range['end'] }
-
-    -- Get the definition text before removing it
-    local def_text = doc:get_text(def_range)
-
-    -- Remove the definition
-    doc:replace_text(def_range, '')
   end
 
   -- Open source file
@@ -252,6 +258,38 @@ function M.execute_to_source()
   if not definition_text or definition_text == '' then
     utils.notify('Failed to generate definition', 'error')
     return
+  end
+
+  local body_text = def_text
+  if leading_comments ~= '' then
+    body_text = def_text:sub(#leading_comments + 1)
+  end
+
+  local formatted_brace = definition_text:find('{', 1, true)
+  local original_brace = body_text:find('{', 1, true)
+  if formatted_brace and original_brace then
+    local formatted_end = formatted_brace - 1
+    while formatted_end > 0 and definition_text:sub(formatted_end, formatted_end):match('%s') do
+      formatted_end = formatted_end - 1
+    end
+
+    local original_start = original_brace
+    while original_start > 1 and body_text:sub(original_start - 1, original_start - 1):match('%s') do
+      original_start = original_start - 1
+    end
+
+    definition_text = leading_comments
+      .. definition_text:sub(1, formatted_end)
+      .. body_text:sub(original_start)
+  elseif leading_comments ~= '' then
+    definition_text = leading_comments .. definition_text
+  end
+
+  doc:replace_text(def_range, '')
+
+  if not declaration_exists then
+    local decl_pos = config.values.always_move_comments and def_range.start or csymbol:true_start()
+    doc:insert_text(decl_pos, decl_text .. '\n')
   end
 
   -- Add blank line before
@@ -332,6 +370,8 @@ function M._move_out_of_class(doc, csymbol)
   local def_range = config.values.always_move_comments
       and get_range_with_comments(doc, csymbol)
     or { start = csymbol:true_start(), ['end'] = csymbol.range['end'] }
+
+  clamp_range_end(doc, def_range)
 
   -- Get the definition text
   local def_text = doc:get_text(def_range)

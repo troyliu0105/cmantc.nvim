@@ -453,6 +453,7 @@ function M:position_after_header_comment()
   if offset then
     -- Return position before first non-comment text
     local pos = self:position_at_offset(offset - 1)
+
     return ProposedPosition.new(pos, { before = true })
   end
 
@@ -508,6 +509,10 @@ function M:find_position_for_new_include(before_pos)
     local position = self:position_after_header_guard()
     if not position then
       position = self:position_after_header_comment()
+    end
+    -- Normalize ProposedPosition to plain table (position_after_header_comment returns ProposedPosition)
+    if position and position.position then
+      position = { line = position.position.line, character = position.position.character }
     end
     return { system = position, project = position }
   end
@@ -916,7 +921,7 @@ function M:position_after_last_symbol(doc, symbols)
     local end_pos = last_symbol.range and last_symbol.range['end']
     if end_pos then
       return ProposedPosition.new(
-        { line = end_pos.line, character = 0 },
+        { line = end_pos.line + 1, character = 0 },
         { relative_to = last_symbol.range, after = true }
       )
     end

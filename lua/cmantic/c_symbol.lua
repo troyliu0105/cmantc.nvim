@@ -19,14 +19,16 @@ local AccessLevel = utils.AccessLevel
 --------------------------------------------------------------------------------
 
 --- Create a new CSymbol instance
---- @param symbol table Raw LSP DocumentSymbol
+--- @param symbol table Raw LSP DocumentSymbol, SourceSymbol, or CSymbol
 --- @param document table SourceDocument with get_text(range) and offset_at(position) methods
 --- @return table CSymbol instance
 function M.new(symbol, document)
   local self
-  -- SourceSymbol uses selection_range; raw LSP uses selectionRange.
-  -- Re-calling SourceSymbol.new on an already-normalized symbol nils out selection_range.
-  if getmetatable(symbol) == SourceSymbol then
+  local mt = getmetatable(symbol)
+  -- SourceSymbol or CSymbol (already normalized with snake_case fields).
+  -- Re-calling SourceSymbol.new on an already-normalized symbol nils out selection_range
+  -- because it reads camelCase selectionRange from the raw symbol.
+  if mt == SourceSymbol or mt == M then
     self = symbol
   else
     self = SourceSymbol.new(symbol, document.uri, symbol.parent)
@@ -947,6 +949,16 @@ function M:new_function_declaration()
   })
 
   text = parse.trim(text)
+
+  local scopes = self:scopes()
+  for _, scope in ipairs(scopes) do
+    if scope:is_class_type() or scope:is_namespace() then
+      local prefix = scope.name .. '::'
+      local escaped = prefix:gsub('([%(%)%.%%%+%-%*%?%[%]%^%$])', '%%%1')
+      text = text:gsub(escaped, '', 1)
+    end
+  end
+
   text = text .. ';'
 
   return text

@@ -68,6 +68,9 @@ function M.execute()
   for _, scope in ipairs(scopes) do
     if scope:is_class_type() then
       parent_class = target_doc:find_matching_symbol(scope)
+      if parent_class then
+        parent_class = CSymbol.new(parent_class, target_doc)
+      end
       break
     end
   end

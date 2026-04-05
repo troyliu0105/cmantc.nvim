@@ -68,6 +68,10 @@ M._signature_changed = false   -- whether signature change was detected
 --- @param params table { range = { start = { line, character }, ['end'] = { line, character } } }
 --- @return CmanticAction[] Array of action tables
 function M.get_applicable_actions(bufnr, params)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return {}
+  end
+
   local actions = {}
 
   -- Get cursor position from params or current cursor
