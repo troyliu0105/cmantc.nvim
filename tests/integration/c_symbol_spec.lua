@@ -504,4 +504,1538 @@ describe('c_symbol', function()
       eq(false, pos.insert_before)
     end)
   end)
+
+  --------------------------------------------------------------------------------
+  -- Template System Tests
+  --------------------------------------------------------------------------------
+
+  describe('template_statements', function()
+    it('extracts single-line template statement', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local ts = sym:template_statements(false)
+      assert.is_not_nil(ts:find('template%s*<%s*typename%s+T%s*>'))
+    end)
+
+    it('extracts template with whitespace lines before symbol', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        '',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 2,
+        start_char = 0,
+        sel_start_line = 2,
+        sel_start_char = 5,
+        sel_end_line = 2,
+        sel_end_char = 8,
+      })
+
+      local ts = sym:template_statements(false)
+      assert.is_not_nil(ts:find('typename T'))
+    end)
+
+    it('returns empty string when no template present', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local ts = sym:template_statements(false)
+      eq('', ts)
+    end)
+
+    it('removes default arguments when remove_default_args is true', function()
+      local sym = make_csymbol({
+        'template<typename T = int>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local ts = sym:template_statements(true)
+      assert.is_not_nil(ts:find('typename T'))
+      assert.is_nil(ts:find('= int'))
+    end)
+
+    it('keeps default arguments when remove_default_args is false', function()
+      local sym = make_csymbol({
+        'template<typename T = int>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local ts = sym:template_statements(false)
+      assert.is_not_nil(ts:find('= int'))
+    end)
+
+    it('extracts multiple template statements (class + method)', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'class MyClass {',
+        'public:',
+        '    template<typename U>',
+        '    void foo(U u);',
+        '};',
+      }, {
+        name = 'foo',
+        kind = SK.Method,
+        start_line = 4,
+        start_char = 4,
+        sel_start_line = 4,
+        sel_start_char = 9,
+        sel_end_line = 4,
+        sel_end_char = 12,
+      })
+
+      local ts = sym:template_statements(false)
+      assert.is_not_nil(ts:find('typename U'))
+    end)
+  end)
+
+  describe('_remove_template_default_args', function()
+    it('strips single default argument', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      local result = sym:_remove_template_default_args('template<typename T = int>')
+      assert.is_not_nil(result:find('typename T'))
+      assert.is_nil(result:find('= int'))
+    end)
+
+    it('strips multiple default arguments', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      local result = sym:_remove_template_default_args('template<typename T = int, typename U = double>')
+      assert.is_nil(result:find('= int'))
+      assert.is_nil(result:find('= double'))
+    end)
+
+    it('handles template without defaults', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      local result = sym:_remove_template_default_args('template<typename T, typename U>')
+      assert.is_not_nil(result:find('typename T'))
+      assert.is_not_nil(result:find('typename U'))
+    end)
+
+    it('handles non-int default like nullptr', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      local result = sym:_remove_template_default_args('template<typename T = nullptr>')
+      assert.is_nil(result:find('= nullptr'))
+    end)
+  end)
+
+  describe('template_parameters', function()
+    it('extracts single template parameter', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local params = sym:template_parameters()
+      eq('<T>', params)
+    end)
+
+    it('extracts multiple template parameters', function()
+      local sym = make_csymbol({
+        'template<typename T, typename U>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local params = sym:template_parameters()
+      eq('<T, U>', params)
+    end)
+
+    it('returns empty string when no template', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local params = sym:template_parameters()
+      eq('', params)
+    end)
+
+    it('skips default arguments in extracted parameters', function()
+      local sym = make_csymbol({
+        'template<typename T = int, typename U = double>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local params = sym:template_parameters()
+      eq('<T, U>', params)
+    end)
+
+    it('handles class template parameter', function()
+      local sym = make_csymbol({
+        'template<class T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local params = sym:template_parameters()
+      eq('<T>', params)
+    end)
+  end)
+
+  describe('templated_name', function()
+    it('returns name with template parameters', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      eq('foo<T>', sym:templated_name(false))
+    end)
+
+    it('returns plain name when no template', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      eq('foo', sym:templated_name(false))
+    end)
+
+    it('normalizes whitespace when normalize is true', function()
+      local sym = make_csymbol({
+        'template< typename  T >',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      -- template_parameters normalizes whitespace
+      local name = sym:templated_name(true)
+      assert.is_not_nil(name:find('foo'))
+    end)
+  end)
+
+  describe('is_template', function()
+    it('returns true for template function', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 0,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+        end_line = 1,
+        end_char = 12,
+      })
+
+      assert.is_true(sym:is_template())
+    end)
+
+    it('returns false for non-template function', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_false(sym:is_template())
+    end)
+
+    it('returns true for template class', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'class MyClass {};',
+      }, {
+        name = 'MyClass',
+        kind = SK.Class,
+        start_line = 0,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 6,
+        sel_end_line = 1,
+        sel_end_char = 13,
+        end_line = 1,
+        end_char = 17,
+      })
+
+      assert.is_true(sym:is_template())
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Type Predicates Tests
+  --------------------------------------------------------------------------------
+
+  describe('is_constexpr', function()
+    it('returns true when constexpr is present', function()
+      local sym = make_csymbol({ 'constexpr int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 16,
+        sel_end_char = 19,
+      })
+
+      assert.is_true(sym:is_constexpr())
+    end)
+
+    it('returns false when constexpr is not present', function()
+      local sym = make_csymbol({ 'int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 4,
+        sel_end_char = 7,
+      })
+
+      assert.is_false(sym:is_constexpr())
+    end)
+
+    it('does not match constexpr inside identifier', function()
+      local sym = make_csymbol({ 'int constexprfoo();' }, {
+        name = 'constexprfoo',
+        kind = SK.Function,
+        sel_start_char = 4,
+        sel_end_char = 16,
+      })
+
+      assert.is_false(sym:is_constexpr())
+    end)
+  end)
+
+  describe('is_consteval', function()
+    it('returns true when consteval is present', function()
+      local sym = make_csymbol({ 'consteval int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 15,
+        sel_end_char = 18,
+      })
+
+      assert.is_true(sym:is_consteval())
+    end)
+
+    it('returns false when consteval is not present', function()
+      local sym = make_csymbol({ 'int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 4,
+        sel_end_char = 7,
+      })
+
+      assert.is_false(sym:is_consteval())
+    end)
+  end)
+
+  describe('is_pointer', function()
+    it('returns true for pointer return type', function()
+      local sym = make_csymbol({ 'int* foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_true(sym:is_pointer())
+    end)
+
+    it('returns true for const pointer', function()
+      local sym = make_csymbol({ 'const int* foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 11,
+        sel_end_char = 14,
+      })
+
+      assert.is_true(sym:is_pointer())
+    end)
+
+    it('returns false for non-pointer type', function()
+      local sym = make_csymbol({ 'int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 4,
+        sel_end_char = 7,
+      })
+
+      assert.is_false(sym:is_pointer())
+    end)
+
+    it('does not match pointer inside template', function()
+      local sym = make_csymbol({ 'std::vector<int*> foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 19,
+        sel_end_char = 22,
+      })
+
+      -- The * inside template<> should be masked
+      assert.is_false(sym:is_pointer())
+    end)
+  end)
+
+  describe('is_reference', function()
+    it('returns true for lvalue reference', function()
+      local sym = make_csymbol({ 'int& foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_true(sym:is_reference())
+    end)
+
+    it('returns true for rvalue reference', function()
+      local sym = make_csymbol({ 'int&& foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 6,
+        sel_end_char = 9,
+      })
+
+      assert.is_true(sym:is_reference())
+    end)
+
+    it('returns true for const reference', function()
+      local sym = make_csymbol({ 'const int& foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 11,
+        sel_end_char = 14,
+      })
+
+      assert.is_true(sym:is_reference())
+    end)
+
+    it('returns false for non-reference type', function()
+      local sym = make_csymbol({ 'int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 4,
+        sel_end_char = 7,
+      })
+
+      assert.is_false(sym:is_reference())
+    end)
+
+    it('does not match reference inside template', function()
+      local sym = make_csymbol({ 'std::vector<int&> foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 19,
+        sel_end_char = 22,
+      })
+
+      -- The & inside template<> should be masked
+      assert.is_false(sym:is_reference())
+    end)
+  end)
+
+  describe('is_pure_virtual', function()
+    it('returns true for pure virtual with = 0', function()
+      local sym = make_csymbol({ 'virtual void foo() = 0;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 13,
+        sel_end_char = 16,
+      })
+
+      assert.is_true(sym:is_pure_virtual())
+    end)
+
+    it('returns false for regular virtual function', function()
+      local sym = make_csymbol({ 'virtual void foo();' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 13,
+        sel_end_char = 16,
+      })
+
+      assert.is_false(sym:is_pure_virtual())
+    end)
+
+    it('returns false for non-virtual function with = 0', function()
+      local sym = make_csymbol({ 'void foo() = 0;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      -- is_pure_virtual checks is_virtual() first
+      assert.is_false(sym:is_pure_virtual())
+    end)
+
+    it('returns true for pure virtual with override and = 0', function()
+      local sym = make_csymbol({ 'void foo() override = 0;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      -- override implies virtual
+      assert.is_true(sym:is_pure_virtual())
+    end)
+  end)
+
+  describe('is_deleted_or_defaulted', function()
+    it('returns true for deleted function', function()
+      local sym = make_csymbol({ 'void foo() = delete;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_true(sym:is_deleted_or_defaulted())
+    end)
+
+    it('returns true for defaulted function', function()
+      local sym = make_csymbol({ 'MyClass() = default;' }, {
+        name = 'MyClass',
+        kind = SK.Constructor,
+        sel_start_char = 0,
+        sel_end_char = 7,
+      })
+
+      assert.is_true(sym:is_deleted_or_defaulted())
+    end)
+
+    it('returns false for regular function', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_false(sym:is_deleted_or_defaulted())
+    end)
+
+    it('returns true for explicitly deleted copy constructor', function()
+      local sym = make_csymbol({ 'MyClass(const MyClass&) = delete;' }, {
+        name = 'MyClass',
+        kind = SK.Constructor,
+        sel_start_char = 0,
+        sel_end_char = 7,
+      })
+
+      assert.is_true(sym:is_deleted_or_defaulted())
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Position/Boundary Helpers Tests
+  --------------------------------------------------------------------------------
+
+  describe('true_start', function()
+    it('returns template position when template on same line', function()
+      local sym = make_csymbol({
+        'template<typename T> void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 0,
+        start_char = 21,
+        sel_start_line = 0,
+        sel_start_char = 26,
+        sel_end_line = 0,
+        sel_end_char = 29,
+        end_line = 0,
+        end_char = 32,
+      })
+
+      local pos = sym:true_start()
+      eq(0, pos.line)
+      eq(0, pos.character) -- template starts at beginning
+    end)
+
+    it('returns template position when template on previous line', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:true_start()
+      eq(0, pos.line)
+    end)
+
+    it('returns range.start when no template', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 0,
+        start_char = 0,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:true_start()
+      eq(0, pos.line)
+      eq(0, pos.character)
+    end)
+
+    it('handles template with blank lines before', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        '',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 2,
+        start_char = 0,
+        sel_start_line = 2,
+        sel_start_char = 5,
+        sel_end_line = 2,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:true_start()
+      eq(0, pos.line)
+    end)
+  end)
+
+  describe('declaration_end', function()
+    it('returns position before opening brace on same line', function()
+      local sym = make_csymbol({ 'void foo() { }' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+        end_line = 0,
+        end_char = 14,
+      })
+
+      local pos = sym:declaration_end()
+      eq(0, pos.line)
+      -- Should be position before {
+    end)
+
+    it('returns position before semicolon', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:declaration_end()
+      eq(0, pos.line)
+      -- Should be position before ;
+    end)
+
+    it('handles multi-line declaration', function()
+      local sym = make_csymbol({
+        'void foo(int x,',
+        '          int y) {',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        end_line = 1,
+        end_char = 19,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:declaration_end()
+      eq(1, pos.line)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Scope Computation Tests
+  --------------------------------------------------------------------------------
+
+  describe('named_scopes', function()
+    it('returns empty table for top-level symbol', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local scopes = sym:named_scopes()
+      eq(0, #scopes)
+    end)
+  end)
+
+  describe('all_scopes', function()
+    it('returns empty table for top-level symbol', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local scopes = sym:all_scopes()
+      eq(0, #scopes)
+    end)
+  end)
+
+  describe('scope_string', function()
+    it('returns empty string when no scopes', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local target_buf = helpers.create_buffer({}, 'cpp')
+      local target_doc = SourceDocument.new(target_buf)
+
+      local scope = sym:scope_string(target_doc, { line = 0, character = 0 }, false)
+      eq('', scope)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Access Specifier Tests
+  --------------------------------------------------------------------------------
+
+  describe('get_access_specifiers', function()
+    it('parses all three access sections', function()
+      local lines = {
+        'class MyClass {',
+        'public:',
+        '    void pub();',
+        'protected:',
+        '    void prot();',
+        'private:',
+        '    void priv();',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 7, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local specs = csym:get_access_specifiers()
+
+      eq(3, #specs)
+    end)
+
+    it('returns empty table for non-class type', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local specs = sym:get_access_specifiers()
+      eq(0, #specs)
+    end)
+
+    it('returns empty table for class without explicit specifiers', function()
+      local lines = {
+        'class MyClass {',
+        '    void method();',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 2, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local specs = csym:get_access_specifiers()
+
+      eq(0, #specs)
+    end)
+  end)
+
+  describe('find_position_for_new_member_function edge cases', function()
+    it('returns body end when no matching access specifier', function()
+      local lines = {
+        'class MyClass {',
+        '    void method();',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 2, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local pos = csym:find_position_for_new_member_function('public', nil)
+
+      assert.is_not_nil(pos)
+      -- Should fall back to body end
+      eq(false, pos.insert_before)
+    end)
+
+    it('returns position at end of access section without relative_name', function()
+      local lines = {
+        'class MyClass {',
+        'public:',
+        '    void existing();',
+        'private:',
+        '    int x;',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 5, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local pos = csym:find_position_for_new_member_function('public', nil)
+
+      assert.is_not_nil(pos)
+      -- Should be before private: section
+      eq(false, pos.insert_before)
+    end)
+
+    it('returns nil for non-class type', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local pos = sym:find_position_for_new_member_function('public', nil)
+      assert.is_nil(pos)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Curly Brace Style Tests
+  --------------------------------------------------------------------------------
+
+  describe('_get_curly_brace_style', function()
+    local config = require('cmantic.config')
+
+    it('uses c_curly_brace_function for .c files', function()
+      local original = config.values.c_curly_brace_function
+      config.values.c_curly_brace_function = 'new_line'
+
+      local lines = { 'void foo();' }
+      local bufnr = helpers.create_buffer(lines, 'c')
+      local target_doc = SourceDocument.new(bufnr)
+
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local style = sym:_get_curly_brace_style(target_doc, { line = 0, character = 0 })
+      eq('new_line', style)
+
+      config.values.c_curly_brace_function = original
+    end)
+
+    it('returns new_line for constructor when new_line_for_ctors', function()
+      local original = config.values.cpp_curly_brace_function
+      config.values.cpp_curly_brace_function = 'new_line_for_ctors'
+
+      local lines = { 'class Test {};' }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local target_doc = SourceDocument.new(bufnr)
+
+      local sym = make_csymbol({ 'MyClass();' }, {
+        name = 'MyClass',
+        kind = SK.Constructor,
+        sel_start_char = 0,
+        sel_end_char = 7,
+      })
+
+      local style = sym:_get_curly_brace_style(target_doc, { line = 0, character = 0 })
+      eq('new_line', style)
+
+      config.values.cpp_curly_brace_function = original
+    end)
+
+    it('returns same_line for non-constructor when new_line_for_ctors', function()
+      local original = config.values.cpp_curly_brace_function
+      config.values.cpp_curly_brace_function = 'new_line_for_ctors'
+
+      local lines = { '// empty' }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local target_doc = SourceDocument.new(bufnr)
+
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local style = sym:_get_curly_brace_style(target_doc, { line = 0, character = 0 })
+      eq('new_line', style) -- falls through to new_line_for_ctors default
+
+      config.values.cpp_curly_brace_function = original
+    end)
+  end)
+
+  describe('_format_opening_brace', function()
+    it('formats with newline when style is new_line', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local result = sym:_format_opening_brace('void foo()', 'new_line')
+      assert.is_not_nil(result:find('\n{\n}'))
+    end)
+
+    it('formats with same line when style is same_line', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local result = sym:_format_opening_brace('void foo()', 'same_line')
+      assert.is_not_nil(result:find(' {\n}'))
+    end)
+
+    it('trims leading and trailing whitespace', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local result = sym:_format_opening_brace('  void foo()  ', 'same_line')
+      assert.is_not_nil(result:find('^void foo%(%) {\n}'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Utility Methods Tests
+  --------------------------------------------------------------------------------
+
+  describe('get_lines', function()
+    it('returns lines from document', function()
+      local sym, doc = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local lines = sym:get_lines()
+      assert.is_not_nil(lines)
+      eq(1, #lines)
+      eq('void foo();', lines[1])
+    end)
+
+    it('returns multiple lines', function()
+      local sym = make_csymbol({
+        'void foo() {',
+        '  // body',
+        '}',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        end_line = 2,
+        end_char = 1,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local lines = sym:get_lines()
+      eq(3, #lines)
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Additional Specifier Detection Tests
+  --------------------------------------------------------------------------------
+
+  describe('is_virtual with override/final', function()
+    it('detects virtual keyword directly', function()
+      local sym = make_csymbol({ 'virtual void foo();' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 13,
+        sel_end_char = 16,
+      })
+
+      assert.is_true(sym:is_virtual())
+    end)
+
+    it('infers virtual from override specifier', function()
+      local sym = make_csymbol({ 'void foo() override;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_true(sym:is_virtual())
+    end)
+
+    it('infers virtual from final specifier', function()
+      local sym = make_csymbol({ 'void foo() final;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_true(sym:is_virtual())
+    end)
+
+    it('returns false when neither virtual nor override/final', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      assert.is_false(sym:is_virtual())
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Additional format_declaration Tests
+  --------------------------------------------------------------------------------
+
+  describe('format_declaration with templates', function()
+    it('includes template statements in output', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local target_buf = helpers.create_buffer({}, 'cpp')
+      local target_doc = SourceDocument.new(target_buf)
+
+      local text = sym:format_declaration(target_doc, { line = 0, character = 0 }, '', false)
+
+      assert.is_not_nil(text:find('template'))
+      assert.is_not_nil(text:find('void foo'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Parsable Text Tests
+  --------------------------------------------------------------------------------
+
+  describe('parsable_leading_text', function()
+    it('returns text before symbol name', function()
+      local sym = make_csymbol({ 'virtual void foo();' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 13,
+        sel_end_char = 16,
+      })
+
+      local leading = sym:parsable_leading_text()
+      assert.is_not_nil(leading:find('virtual'))
+      assert.is_not_nil(leading:find('void'))
+    end)
+
+    it('returns empty string when symbol starts at beginning', function()
+      local sym = make_csymbol({ 'foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_char = 0,
+        sel_start_char = 0,
+        sel_end_char = 3,
+      })
+
+      local leading = sym:parsable_leading_text()
+      eq('', leading)
+    end)
+  end)
+
+  describe('parsable_trailing_text', function()
+    it('returns text after symbol name', function()
+      local sym = make_csymbol({ 'void foo() override;' }, {
+        name = 'foo',
+        kind = SK.Method,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local trailing = sym:parsable_trailing_text()
+      assert.is_not_nil(trailing:find('override'))
+    end)
+
+    it('includes parameters in trailing text', function()
+      local sym = make_csymbol({ 'void foo(int x);' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local trailing = sym:parsable_trailing_text()
+      assert.is_not_nil(trailing:find('int x'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- text() Method Tests
+  --------------------------------------------------------------------------------
+
+  describe('text', function()
+    it('returns full symbol text', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      eq('void foo();', sym:text())
+    end)
+
+    it('returns multi-line symbol text', function()
+      local sym = make_csymbol({
+        'void foo() {',
+        '  return;',
+        '}',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        end_line = 2,
+        end_char = 1,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local text = sym:text()
+      assert.is_not_nil(text:find('void foo'))
+      assert.is_not_nil(text:find('return'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- get_parsable_text Tests
+  --------------------------------------------------------------------------------
+
+  describe('get_parsable_text', function()
+    it('masks comments', function()
+      local sym = make_csymbol({ 'void foo(); // comment' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local parsable = sym:get_parsable_text()
+      assert.is_nil(parsable:find('comment'))
+      assert.is_not_nil(parsable:find('void foo'))
+    end)
+
+    it('masks string literals', function()
+      local sym = make_csymbol({ 'void foo(const char* s = "test");' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local parsable = sym:get_parsable_text()
+      -- "test" should be masked
+      assert.is_nil(parsable:find('"test"'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- combined_template_statements Tests
+  --------------------------------------------------------------------------------
+
+  describe('combined_template_statements', function()
+    it('returns own template when no ancestors', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local combined = sym:combined_template_statements(false, '\n')
+      assert.is_not_nil(combined:find('typename T'))
+    end)
+
+    it('returns empty string when no templates', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      local combined = sym:combined_template_statements(false, '\n')
+      eq('', combined)
+    end)
+
+    it('uses custom separator', function()
+      local sym = make_csymbol({
+        'template<typename T>',
+        'void foo();',
+      }, {
+        name = 'foo',
+        kind = SK.Function,
+        start_line = 1,
+        start_char = 0,
+        sel_start_line = 1,
+        sel_start_char = 5,
+        sel_end_line = 1,
+        sel_end_char = 8,
+      })
+
+      local combined = sym:combined_template_statements(false, ' ')
+      assert.is_not_nil(combined:find('template'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- _extract_template_param_name Tests
+  --------------------------------------------------------------------------------
+
+  describe('_extract_template_param_name', function()
+    it('extracts simple typename parameter', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      eq('T', sym:_extract_template_param_name('typename T'))
+    end)
+
+    it('extracts class parameter', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      eq('T', sym:_extract_template_param_name('class T'))
+    end)
+
+    it('strips default argument', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      eq('T', sym:_extract_template_param_name('typename T = int'))
+    end)
+
+    it('extracts non-type parameter name', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      eq('N', sym:_extract_template_param_name('int N'))
+    end)
+
+    it('handles template template parameter', function()
+      local sym = make_csymbol({ 'void foo();' }, { name = 'foo', kind = SK.Function })
+      eq('Container', sym:_extract_template_param_name('template<typename> class Container'))
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Additional is_const Tests
+  --------------------------------------------------------------------------------
+
+  describe('is_const additional cases', function()
+    it('detects const qualifier', function()
+      local sym = make_csymbol({ 'const int foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 10,
+        sel_end_char = 13,
+      })
+
+      assert.is_true(sym:is_const())
+    end)
+
+    it('does not match const inside template', function()
+      local sym = make_csymbol({ 'std::vector<const int*> foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 25,
+        sel_end_char = 28,
+      })
+
+      -- const inside template<> should be masked
+      assert.is_false(sym:is_const())
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- Accessor with Boolean Tests
+  --------------------------------------------------------------------------------
+
+  describe('getter/setter with boolean type', function()
+    local config = require('cmantic.config')
+
+    it('uses is_ prefix for boolean when bool_getter_is_prefix is true', function()
+      local original = config.values.bool_getter_is_prefix
+      config.values.bool_getter_is_prefix = true
+
+      local bufnr = helpers.create_buffer({
+        'class MyClass {',
+        'public:',
+        '    bool active;',
+        '};',
+      }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local parent_raw = {
+        name = 'MyClass', kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 3, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '', children = {},
+      }
+      local parent_sym = require('cmantic.source_symbol').new(parent_raw, doc.uri, nil)
+
+      local csym = CSymbol.new({
+        name = 'active',
+        kind = SK.Field,
+        range = { start = { line = 2, character = 4 }, ['end'] = { line = 2, character = 15 } },
+        selectionRange = { start = { line = 2, character = 9 }, ['end'] = { line = 2, character = 15 } },
+        detail = 'bool',
+        children = {},
+      }, doc)
+      csym.parent = parent_sym
+
+      eq('is_active', csym:getter_name())
+
+      config.values.bool_getter_is_prefix = original
+    end)
+
+    it('uses get_ prefix for boolean when bool_getter_is_prefix is false', function()
+      local original = config.values.bool_getter_is_prefix
+      config.values.bool_getter_is_prefix = false
+
+      local bufnr = helpers.create_buffer({
+        'class MyClass {',
+        'public:',
+        '    bool active;',
+        '};',
+      }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local parent_raw = {
+        name = 'MyClass', kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 3, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '', children = {},
+      }
+      local parent_sym = require('cmantic.source_symbol').new(parent_raw, doc.uri, nil)
+
+      local csym = CSymbol.new({
+        name = 'active',
+        kind = SK.Field,
+        range = { start = { line = 2, character = 4 }, ['end'] = { line = 2, character = 15 } },
+        selectionRange = { start = { line = 2, character = 9 }, ['end'] = { line = 2, character = 15 } },
+        detail = 'bool',
+        children = {},
+      }, doc)
+      csym.parent = parent_sym
+
+      eq('get_active', csym:getter_name())
+
+      config.values.bool_getter_is_prefix = original
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- is_member_variable Tests
+  --------------------------------------------------------------------------------
+
+  describe('is_member_variable via accessor names', function()
+    it('returns empty string for non-field symbol', function()
+      local sym = make_csymbol({ 'void foo();' }, {
+        name = 'foo',
+        kind = SK.Function,
+        sel_start_char = 5,
+        sel_end_char = 8,
+      })
+
+      eq('', sym:getter_name())
+      eq('', sym:setter_name())
+    end)
+  end)
+
+  --------------------------------------------------------------------------------
+  -- _is_bool_type Tests
+  --------------------------------------------------------------------------------
+
+  describe('_is_bool_type', function()
+    it('returns true for bool type', function()
+      local bufnr = helpers.create_buffer({
+        'class MyClass {',
+        '    bool flag;',
+        '};',
+      }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'flag',
+        kind = SK.Field,
+        range = { start = { line = 1, character = 4 }, ['end'] = { line = 1, character = 13 } },
+        selectionRange = { start = { line = 1, character = 9 }, ['end'] = { line = 1, character = 13 } },
+        detail = 'bool',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      assert.is_true(csym:_is_bool_type())
+    end)
+
+    it('returns false for non-bool type', function()
+      local bufnr = helpers.create_buffer({
+        'class MyClass {',
+        '    int count;',
+        '};',
+      }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'count',
+        kind = SK.Field,
+        range = { start = { line = 1, character = 4 }, ['end'] = { line = 1, character = 13 } },
+        selectionRange = { start = { line = 1, character = 8 }, ['end'] = { line = 1, character = 13 } },
+        detail = 'int',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      assert.is_false(csym:_is_bool_type())
+    end)
+  end)
 end)
