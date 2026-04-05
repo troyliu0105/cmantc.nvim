@@ -68,5 +68,30 @@ describe('config', function()
     it('returns empty for empty input', function()
       eq('', config.format_to_case_style(''))
     end)
+
+    it('snake_case: HTTPRequest -> http_request', function()
+      config.values.case_style = 'snake_case'
+      eq('http_request', config.format_to_case_style('HTTPRequest'))
+    end)
+
+    it('snake_case: FooBarBaz -> foo_bar_baz', function()
+      config.values.case_style = 'snake_case'
+      eq('foo_bar_baz', config.format_to_case_style('FooBarBaz'))
+    end)
+
+    it('snake_case: A -> a', function()
+      config.values.case_style = 'snake_case'
+      eq('a', config.format_to_case_style('A'))
+    end)
+
+    it('snake_case: getURL -> get_url', function()
+      config.values.case_style = 'snake_case'
+      eq('get_url', config.format_to_case_style('getURL'))
+    end)
+
+    it('snake_case: XMLParser -> xml_parser', function()
+      config.values.case_style = 'snake_case'
+      eq('xml_parser', config.format_to_case_style('XMLParser'))
+    end)
   end)
 end)

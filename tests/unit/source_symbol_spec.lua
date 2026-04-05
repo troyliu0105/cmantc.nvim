@@ -36,6 +36,24 @@ describe('source_symbol', function()
       eq('method', sym.name)
     end)
 
+    it('strips global scope resolution ::method', function()
+      local raw = mock_sym('::method', SK.Method)
+      local sym = SourceSymbol.new(raw, 'file:///test.hpp', nil)
+      eq('method', sym.name)
+    end)
+
+    it('strips nested scope resolution NS::Class::method', function()
+      local raw = mock_sym('NS::Class::method', SK.Method)
+      local sym = SourceSymbol.new(raw, 'file:///test.hpp', nil)
+      eq('method', sym.name)
+    end)
+
+    it('preserves name without scope resolution', function()
+      local raw = mock_sym('method', SK.Method)
+      local sym = SourceSymbol.new(raw, 'file:///test.hpp', nil)
+      eq('method', sym.name)
+    end)
+
     it('sets parent reference', function()
       local parent_raw = mock_sym('MyClass', SK.Class, {
         children = { mock_sym('x', SK.Field) }

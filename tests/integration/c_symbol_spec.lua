@@ -339,4 +339,169 @@ describe('c_symbol', function()
       assert.is_not_nil(text:find(';$'))
     end)
   end)
+
+  describe('CSymbol.new wrapping SourceSymbol', function()
+    local SourceSymbol = require('cmantic.source_symbol')
+
+    it('preserves selection_range from SourceSymbol', function()
+      local bufnr = helpers.create_buffer({ 'void foo();' }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'foo',
+        kind = SK.Function,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 12 } },
+        selectionRange = { start = { line = 0, character = 5 }, ['end'] = { line = 0, character = 8 } },
+        detail = '',
+        children = {},
+      }
+
+      local source_sym = SourceSymbol.new(raw_sym, doc.uri, nil)
+      local csym = CSymbol.new(source_sym, doc)
+
+      assert.is_not_nil(csym.selection_range)
+      eq(5, csym.selection_range.start.character)
+      eq(8, csym.selection_range['end'].character)
+    end)
+
+    it('sets correct metatable to CSymbol', function()
+      local bufnr = helpers.create_buffer({ 'void foo();' }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'foo',
+        kind = SK.Function,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 12 } },
+        selectionRange = { start = { line = 0, character = 5 }, ['end'] = { line = 0, character = 8 } },
+        detail = '',
+        children = {},
+      }
+
+      local source_sym = SourceSymbol.new(raw_sym, doc.uri, nil)
+      local csym = CSymbol.new(source_sym, doc)
+
+      eq(CSymbol, getmetatable(csym))
+    end)
+
+    it('has document reference', function()
+      local bufnr = helpers.create_buffer({ 'void foo();' }, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'foo',
+        kind = SK.Function,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 0, character = 12 } },
+        selectionRange = { start = { line = 0, character = 5 }, ['end'] = { line = 0, character = 8 } },
+        detail = '',
+        children = {},
+      }
+
+      local source_sym = SourceSymbol.new(raw_sym, doc.uri, nil)
+      local csym = CSymbol.new(source_sym, doc)
+
+      eq(doc, csym.document)
+    end)
+  end)
+
+  describe('_find_body_end', function()
+    it('returns position before }; on same line', function()
+      local lines = {
+        'class MyClass {',
+        'public:',
+        '    int x;',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 3, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local pos = csym:_find_body_end()
+
+      eq(3, pos.line)
+      eq(0, pos.character) -- position before }
+    end)
+
+    it('returns position before } when alone on line', function()
+      local lines = {
+        'class MyClass',
+        '{',
+        'public:',
+        '    int x;',
+        '}',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 4, character = 1 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {},
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local pos = csym:_find_body_end()
+
+      eq(4, pos.line)
+      eq(0, pos.character) -- position before }
+    end)
+  end)
+
+  describe('find_position_for_new_member_function', function()
+    it('returns position after child matching relative_name', function()
+      local lines = {
+        'class MyClass {',
+        'public:',
+        '    void existing();',
+        '    int x;',
+        '};',
+      }
+      local bufnr = helpers.create_buffer(lines, 'cpp')
+      local doc = SourceDocument.new(bufnr)
+
+      local raw_sym = {
+        name = 'MyClass',
+        kind = SK.Class,
+        range = { start = { line = 0, character = 0 }, ['end'] = { line = 4, character = 2 } },
+        selectionRange = { start = { line = 0, character = 6 }, ['end'] = { line = 0, character = 13 } },
+        detail = '',
+        children = {
+          {
+            name = 'existing',
+            kind = SK.Method,
+            range = { start = { line = 2, character = 4 }, ['end'] = { line = 2, character = 22 } },
+            selectionRange = { start = { line = 2, character = 9 }, ['end'] = { line = 2, character = 17 } },
+            detail = '',
+            children = {},
+          },
+          {
+            name = 'x',
+            kind = SK.Field,
+            range = { start = { line = 3, character = 4 }, ['end'] = { line = 3, character = 10 } },
+            selectionRange = { start = { line = 3, character = 8 }, ['end'] = { line = 3, character = 9 } },
+            detail = 'int',
+            children = {},
+          },
+        },
+      }
+
+      local csym = CSymbol.new(raw_sym, doc)
+      local pos = csym:find_position_for_new_member_function('public', 'existing')
+
+      assert.is_not_nil(pos)
+      eq(2, pos.position.line) -- after existing() on line 2
+      eq(false, pos.insert_before)
+    end)
+  end)
 end)
